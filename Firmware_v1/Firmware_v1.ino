@@ -3,26 +3,32 @@
 #include <ESP8266HTTPClient.h>
 #include <user_interface.h>
 #include "DHT.h"
-
-//#define SERVER_IP "10.0.1.7:9080" // PC address with emulation on host
 #include <Wire.h>
 #include <SPI.h>
 #include <Adafruit_BMP280.h>
 #include <ADS1115_WE.h>
 #include <Wire.h>
 
+
 Adafruit_BMP280 bmp; // I2C
 
 os_timer_t tmr0; //Cria o Timer.
+os_timer_t tmr1;
+
+// Direção do vento
 volatile int windDirCount = 0;
 volatile float windDir[10];
 
-#define SERVER_IP "192.168.0.106:80"
+volatile int rainCount = 0;
+volatile int windSpeedCount = 0;
 
+// COnfigurações wifi
+#define SERVER_IP "192.168.0.106:80"
 #ifndef STASSID
 #define STASSID "Wimax Luiz Gustavo Setten"
 #define STAPSK "34346037"
 
+// Configurações DHT
 #define DHTPIN 2      // pino que estamos conectado
 #define DHTTYPE DHT11 // DHT 11
 
@@ -31,28 +37,30 @@ volatile float windDir[10];
 #define rain 13
 #define wind 15
 #endif
+
 DHT dht(DHTPIN, DHTTYPE);
 
 ADS1115_WE adc(I2C_ADDRESS);
 
+// Cria rotinas de interrupção (para os dois pinos de interrupção, chuva e velocidade do vento)
 void ICACHE_RAM_ATTR funcaoInterrupcaoRain();
-
 void ICACHE_RAM_ATTR funcaoInterrupcaoWind();
 
-void ICACHE_RAM_ATTR funcaoInterrupcaoRain()
-{
+void ICACHE_RAM_ATTR funcaoInterrupcaoRain(){
+  rainCount = rainCount + 1;
   Serial.println("Choveu");
 }
 
-void ICACHE_RAM_ATTR funcaoInterrupcaoWind()
-{
+void ICACHE_RAM_ATTR funcaoInterrupcaoWind(){
+  windSpeedCount = windSpeedCount + 1;
   Serial.println("Ventou");
 }
 
-void setup()
-{
+void setup(){
   os_timer_setfn(&tmr0, readWindDir, NULL); //Indica ao Timer qual sera sua Sub rotina.
   os_timer_arm(&tmr0, 6000, true);          //Inidica ao Timer seu Tempo em mS e se sera repetido ou apenas uma vez (loop = true)
+  os_timer_setfn(&tmr1, sendDataViaWifi, NULL); //Indica ao Timer qual sera sua Sub rotina.
+  os_timer_arm(&tmr1, 60000, true);          //Inidica ao Timer seu Tempo em mS e se sera repetido ou apenas uma vez (loop = true)
   attachInterrupt(digitalPinToInterrupt(rain), funcaoInterrupcaoRain, FALLING);
   attachInterrupt(digitalPinToInterrupt(wind), funcaoInterrupcaoWind, FALLING);
   pinMode(rain, INPUT);
@@ -86,10 +94,10 @@ void setup()
                   Adafruit_BMP280::FILTER_X16,      /* Filtering. */
                   Adafruit_BMP280::STANDBY_MS_500); /* Standby time. */
 
+  // Inicia a conexão do wifi
   WiFi.begin(STASSID, STAPSK);
 
-  while (WiFi.status() != WL_CONNECTED)
-  {
+  while (WiFi.status() != WL_CONNECTED){
     delay(500);
     Serial.print(".");
   }
@@ -98,55 +106,45 @@ void setup()
   Serial.println(WiFi.localIP());
 }
 
-void loop()
-{
-  float h = dht.readHumidity();
-  float t = dht.readTemperature();
+void loop(){
+  delay(50);
+}
 
-  float voltage = 0.0;
-  Serial.print("Pino A0: ");
-  voltage = readChannel(ADS1115_COMP_0_GND);
-  Serial.print(voltage);
-  Serial.println("");
+void sendDataViaWifi(void *x) {
+    float h = dht.readHumidity();
+    float t = dht.readTemperature();
+  
+    float voltage = 0.0;
+    Serial.print("Pino A0: ");
+    voltage = readChannel(ADS1115_COMP_0_GND);
+    Serial.print(voltage);
+    Serial.println("");
+  
+    Serial.print("Pino A1: ");
+    voltage = readChannel(ADS1115_COMP_1_GND);
+    Serial.print(voltage);
+    Serial.println("");
 
-  Serial.print("Pino A1: ");
-  voltage = readChannel(ADS1115_COMP_1_GND);
-  Serial.print(voltage);
-  Serial.println("");
-
-  //    if (isnan(t) || isnan(h))
-  //    {
-  //      Serial.println("Failed to read from DHT");
-  //    }
-  //    else
-  //    {
-  Serial.print("Umidade: ");
-  Serial.print(h);
-  Serial.print(" %t");
-  Serial.print("Temperatura: ");
-  Serial.print(t);
-  Serial.println(" *C");
-  //    }
-
-  Serial.print(F("Temperature = "));
-  Serial.print(bmp.readTemperature());
-  Serial.println(" *C");
-
-  Serial.print(F("Pressure = "));
-  Serial.print(bmp.readPressure());
-  Serial.println(" Pa");
-
-  Serial.print(F("Approx altitude = "));
-  Serial.print(bmp.readAltitude(1018)); /* Adjusted to local forecast! */
-  Serial.println(" m");
-
-  Serial.println();
-  //    delay(2000);
-  // wait for WiFi connection
-  delay(60000); // Trocar para interrupção por tempo
-  if ((WiFi.status() == WL_CONNECTED))
-  {
-
+    Serial.print("Umidade: ");
+    Serial.print(h);
+    Serial.print(" %t");
+    Serial.print("Temperatura: ");
+    Serial.print(t);
+    Serial.println(" *C");
+    //    }
+  
+    Serial.print(F("Temperature = "));
+    Serial.print(bmp.readTemperature());
+    Serial.println(" *C");
+  
+    Serial.print(F("Pressure = "));
+    Serial.print(bmp.readPressure());
+    Serial.println(" Pa");
+  
+    Serial.print(F("Approx altitude = "));
+    Serial.print(bmp.readAltitude(1018)); /* Adjusted to local forecast! */
+    Serial.println(" m");
+    if ((WiFi.status() == WL_CONNECTED)){
     WiFiClient client;
     HTTPClient http;
 
@@ -171,42 +169,41 @@ void loop()
                               "\"solar_incidence\": \"%f\","
                               "\"station_id\": \"5663b746-744a-40a4-a590-a7ac9abc48d8\""
                               "}",
-             bmp.readTemperature(), bmp.readPressure(), h, bmp.readAltitude(1018), bmp.readAltitude(1018), bmp.readAltitude(1018), bmp.readAltitude(1018), bmp.readAltitude(1018));
+             bmp.readTemperature(), bmp.readPressure(), h, rainCount * 0.25, h, bmp.readAltitude(1018), bmp.readAltitude(1018), bmp.readAltitude(1018));
 
     //      Serial.printf(buf);
 
-    int httpCode = http.POST(buf);
+    
+    int httpCode = 0;
+
+    while(httpCode != HTTP_CODE_OK) {  
+    httpCode = http.POST(buf);
 
     // httpCode will be negative on error
-    if (httpCode > 0)
-    {
-      // HTTP header has been send and Server response header has been handled
+    if (httpCode > 0){
       Serial.printf("[HTTP] POST... code: %d\n", httpCode);
-
-      // file found at server
-      if (httpCode == HTTP_CODE_OK)
-      {
+      if (httpCode == HTTP_CODE_OK){
         const String &payload = http.getString();
         Serial.println("received payload:\n<<");
         Serial.println(payload);
         Serial.println(">>");
       }
     }
-    else
-    {
+    else{
       Serial.printf("[HTTP] POST... code: %d\n", httpCode);
-
       Serial.printf("[HTTP] POST... failed, error: %s\n", http.errorToString(httpCode).c_str());
     }
+   }
 
+    rainCount = 0;
+    windSpeedCount = 0;
     http.end();
+  Serial.printf("Mandou");
   }
 }
 
-void readWindDir(void *z)
-{
-  if (windDirCount == 10)
-  {
+void readWindDir(void *z){
+  if (windDirCount == 10){
     windDirCount = 0;
   }
 
@@ -214,8 +211,7 @@ void readWindDir(void *z)
   windDirCount = windDirCount + 1;
 }
 
-float readChannel(ADS1115_MUX channel)
-{
+float readChannel(ADS1115_MUX channel){
   float voltage = 0.0;
   adc.setCompareChannels(channel);
   voltage = adc.getResult_V(); // alternative: getResult_mV for Millivolt
