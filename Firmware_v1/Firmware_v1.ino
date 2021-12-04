@@ -21,16 +21,17 @@ os_timer_t tmr1;
 
 // Direção do vento
 volatile int windDirCount = 0;
-volatile float windDir[10];
+volatile int16_t windDir[10];
 
 volatile int rainCount = 0;
 volatile int windSpeedCount = 0;
 
 volatile bool sendToServer = false;
+const char *host = "http://192.168.0.106:80/records";
 
 // COnfigurações wifi
 #define SERVER_IP "192.168.0.106:80"
-#ifndef STASSID
+//#ifndef STASSID
 #define STASSID "Wimax Luiz Gustavo Setten"
 #define STAPSK "34346037"
 
@@ -42,7 +43,7 @@ volatile bool sendToServer = false;
 
 #define rain 13
 #define wind 15
-#endif
+//#endif
 
 DHT dht(DHTPIN, DHTTYPE);
 
@@ -65,116 +66,94 @@ void sendDataViaWifi(void *x) {
 }
 
 void sendDataViaWifi1() {
-    float h = dht.readHumidity();
-    float t = dht.readTemperature();
-    Serial.printf("Starting sending data");
-  
-    int16_t voltage = 0;
-    Serial.print("Pino A0: ");
-    voltage =  ads1115.readADC_SingleEnded(0);
-    Serial.print(voltage);
-    Serial.println("");
-  
-    Serial.print("Pino A1: ");
-    voltage =  ads1115.readADC_SingleEnded(1);
-    Serial.print(voltage);
-    Serial.println("");
+  float humidity = dht.readHumidity();
+  float t = dht.readTemperature();
+  Serial.printf("Starting sending data");
 
-    Serial.print("Umidade: ");
-    Serial.print(h);
-    Serial.print(" %t");
-    Serial.print("Temperatura: ");
-    Serial.print(t);
-    Serial.println(" *C");
-//        }
+  int16_t voltage = 0;
+  Serial.print("Pino A0: ");
+  voltage =  ads1115.readADC_SingleEnded(0);
+  Serial.print(voltage);
+  Serial.println("");
+
+  int16_t solar_voltage = 0;
+  Serial.print("Pino A1: ");
+  solar_voltage =  ads1115.readADC_SingleEnded(1);
+  Serial.print(voltage);
+  Serial.println("");
+
+  Serial.print("Umidade: ");
+  Serial.print(humidity);
+  Serial.print(" %t");
+  Serial.print("Temperatura: ");
+  Serial.print(t);
+  Serial.println(" *C");
+
+  Serial.print(F("Temperature = "));
+  Serial.print(bmp.readTemperature());
+  Serial.println(" *C");
+
+  Serial.print(F("Pressure = "));
+  Serial.print(bmp.readPressure());
+  Serial.println(" Pa");
+
+  Serial.print(F("Approx altitude = "));
+  Serial.print(bmp.readAltitude(1018)); /* Adjusted to local forecast! */
+  Serial.println(" m");
+
+  char windDirection[200];
+  snprintf(windDirection, sizeof windDirection, "\"%d, %d, %d, %d, %d, %d, %d, %d, %d, %d\"", windDir[0], windDir[1], windDir[2], windDir[3], windDir[4], windDir[5], windDir[6], windDir[7], windDir[8], windDir[9]);
   
-    Serial.print(F("Temperature = "));
-    Serial.print(bmp.readTemperature());
-    Serial.println(" *C");
+  char buf[1000];
+  snprintf(buf, sizeof buf, "{"
+                            "\"temperature\": %f,"
+                            "\"pressure\": %f,"
+                            "\"humidity\": %f,"
+                            "\"precipitation\": %f,"
+                            "\"wind_gust\": %f,"
+                            "\"wind_speed\": %f,"
+                            "\"wind_direction\": %s,"
+                            "\"solar_incidence\": %d,"
+                            "\"station_id\": \"5663b746-744a-40a4-a590-a7ac9abc48d8\""
+                            "}",
+    bmp.readTemperature(), bmp.readPressure(), humidity, rainCount*0.25, windSpeedCount*3.0, windSpeedCount*1.0, windDirection, solar_voltage);
   
-    Serial.print(F("Pressure = "));
-    Serial.print(bmp.readPressure());
-    Serial.println(" Pa");
-  
-    Serial.print(F("Approx altitude = "));
-    Serial.print(bmp.readAltitude(1018)); /* Adjusted to local forecast! */
-    Serial.println(" m");
-    if ((WiFiMulti.run() == WL_CONNECTED)){
+  int httpCode = 0;
+      
+  if ((WiFiMulti.run() == WL_CONNECTED)){
     WiFiClient client;
     HTTPClient http;
-
-    if (http.begin(client, "http://192.168.0.106:80/records")) {  // HTTP
+  
+    if (http.begin(client, "http://192.168.0.106/records")) {  // HTTP
       http.addHeader("Content-Type", "application/json");
-//
-//      Serial.print("[HTTP] POST...\n");
-//      // start connection and send HTTP header
-//      int httpCode = http.POST("{ \"station_id\": \"adqas8dqasdd8asd8asdjasd\", \"temperature\": 14.5 }");
-//
-//      // httpCode will be negative on error
-//      if (httpCode > 0) {
-//        // HTTP header has been send and Server response header has been handled
-//        Serial.printf("[HTTP] POST... code: %d\n", httpCode);
-//
-//        // file found at server
-//        if (httpCode == HTTP_CODE_OK || httpCode == HTTP_CODE_MOVED_PERMANENTLY) {
-//          String payload = http.getString();
-//          Serial.println(payload);
-//        }
-//      } else {
-//        Serial.printf("[HTTP] GET... failed, error: %s\n", http.errorToString(httpCode).c_str());
-//      }
-//
-//      http.end();
-//    } else {
-//      Serial.printf("[HTTP} Unable to connect\n");
-
-    Serial.print("[HTTP] POST...\n");
-    // start connection and send HTTP header and body
-    //    int httpCode = http.POST("{\t\n\t\"temperature\": 28.5,\n\t\"pressure\": 880,\n\t\"humidity\": 80,\n\t\"rainfall\": 0,\n\t\"wind_gust\": 2,\n\t\"wind_speed\": 24,\n\t\"wind_direction\": 180,\n\t\"solar_incidence\": 12.5,\n\t\"station_id\": \"5663b746-744a-40a4-a590-a7ac9abc48d8\"\n}");
-    char buf[1000];
-    snprintf(buf, sizeof buf, "{"
-                              "\"temperature\": \"%f\","
-                              "\"pressure\": \"%f\","
-                              "\"humidity\": \"%f\","
-                              "\"rainfall\": \"%f\","
-                              "\"wind_gust\": \"%f\","
-                              "\"wind_speed\": \"%f\","
-                              "\"wind_direction\": \"%f\","
-                              "\"solar_incidence\": \"%f\","
-                              "\"station_id\": \"5663b746-744a-40a4-a590-a7ac9abc48d8\""
-                              "}",
-             bmp.readTemperature(), bmp.readPressure(), 1, rainCount * 0.25, 1, bmp.readAltitude(1018), bmp.readAltitude(1018), bmp.readAltitude(1018));
-
-
-    int httpCode = 0;
-
-    while(httpCode != HTTP_CODE_OK) {  
-     Serial.printf("Started while");
-     httpCode = http.POST(buf);
-     
-    // httpCode will be negative on error
-    if (httpCode > 0){
-      Serial.printf("[HTTP] POST... code: %d\n", httpCode);
-      if (httpCode == HTTP_CODE_OK){
-        const String &payload = http.getString();
-        Serial.println("received payload:\n<<");
-        Serial.println(payload);
-        Serial.println(">>");
+      Serial.print("[HTTP] POST...\n");
+  
+      while(httpCode != HTTP_CODE_OK) {  
+        if(WiFi.status() == WL_CONNECTED) {
+          Serial.print("Está conectado");
+          httpCode = http.POST(buf); 
+        }
+       
+        // httpCode will be negative on error
+        if (httpCode > 0){
+          Serial.printf("[HTTP] POST... code: %d\n", httpCode);
+          if (httpCode == HTTP_CODE_OK){
+            const String &payload = http.getString();
+            Serial.println("received payload:\n<<");
+            Serial.println(payload);
+            Serial.println(">>");
+          }
+        } else {
+          Serial.printf("[HTTP] POST... code: %d\n", httpCode);
+          Serial.printf("[HTTP] POST... failed, error: %s\n", http.errorToString(httpCode).c_str());
+          delay(3000);  
+        }
+          http.end();
       }
-    }
-    else{
-      Serial.printf("[HTTP] POST... code: %d\n", httpCode);
-      Serial.printf("[HTTP] POST... failed, error: %s\n", http.errorToString(httpCode).c_str());
-      delay(300);
-    }
-        http.end();
-   }
-
-    rainCount = 0;
-    windSpeedCount = 0;
+        rainCount = 0;
+        windSpeedCount = 0;
+      }
   }
-    }
-
 }
 
 void readWindDir(void *z){
@@ -186,19 +165,12 @@ void readWindDir(void *z){
   windDir[windDirCount] = ads1115.readADC_SingleEnded(0);
   windDirCount = windDirCount + 1;
 }
-//
-//float readChannel(ADS1115_MUX channel){
-//  float voltage = 0.0;
-//  adc.setCompareChannels(channel);
-//  voltage = adc.getResult_V(); // alternative: getResult_mV for Millivolt
-//  return voltage;
-//}
 
 void setup(){
   os_timer_setfn(&tmr0, readWindDir, NULL); //Indica ao Timer qual sera sua Sub rotina.
   os_timer_arm(&tmr0, 6000, true);          //Inidica ao Timer seu Tempo em mS e se sera repetido ou apenas uma vez (loop = true)
   os_timer_setfn(&tmr1, sendDataViaWifi, NULL); //Indica ao Timer qual sera sua Sub rotina.
-  os_timer_arm(&tmr1, 6000, true);          //Inidica ao Timer seu Tempo em mS e se sera repetido ou apenas uma vez (loop = true)
+  os_timer_arm(&tmr1, 60000, true);          //Inidica ao Timer seu Tempo em mS e se sera repetido ou apenas uma vez (loop = true)
   attachInterrupt(digitalPinToInterrupt(rain), funcaoInterrupcaoRain, FALLING);
   attachInterrupt(digitalPinToInterrupt(wind), funcaoInterrupcaoWind, FALLING);
   pinMode(rain, INPUT);
@@ -227,15 +199,13 @@ void setup(){
   // Inicia a conexão do wifi
   WiFi.mode(WIFI_STA);
   WiFiMulti.addAP(STASSID, STAPSK);
-//  WiFi.begin(STASSID, STAPSK);
-
-//  while (WiFi.status() != WL_CONNECTED){
-//    delay(500);
-//    Serial.print(".");
-//  }
-//  Serial.println("");
-//  Serial.print("Connected! IP address: ");
-//  Serial.println(WiFi.localIP());
+  Serial.print("Conectando");
+  while (WiFi.status() != WL_CONNECTED) { //ENQUANTO STATUS FOR DIFERENTE DE CONECTADO
+    delay(500); //INTERVALO DE 500 MILISEGUNDOS
+    Serial.print("."); //ESCREVE O CARACTER NA SERIAL
+  }
+  Serial.print("\n Conectado. IP:");
+  Serial.println(WiFi.localIP());
 }
 
 void loop(){
