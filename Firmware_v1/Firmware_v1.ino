@@ -13,7 +13,7 @@
 
 ESP8266WiFiMulti WiFiMulti;
 
-Adafruit_BMP280 bmp; // I2C
+//Adafruit_BMP280 bmp; // I2C
 Adafruit_ADS1115 ads1115;
 
 os_timer_t tmr0; //Cria o Timer.
@@ -90,21 +90,23 @@ void sendDataViaWifi1() {
   Serial.println(" *C");
 
   Serial.print(F("Temperature = "));
-  Serial.print(bmp.readTemperature());
+  //Serial.print(bmp.readTemperature());
   Serial.println(" *C");
 
   Serial.print(F("Pressure = "));
-  Serial.print(bmp.readPressure());
+  //Serial.print(bmp.readPressure());
   Serial.println(" Pa");
 
   Serial.print(F("Approx altitude = "));
-  Serial.print(bmp.readAltitude(1018)); /* Adjusted to local forecast! */
+  //Serial.print(bmp.readAltitude(1018)); /* Adjusted to local forecast! */
   Serial.println(" m");
 
   char windDirection[200];
   snprintf(windDirection, sizeof windDirection, "\"%d, %d, %d, %d, %d, %d, %d, %d, %d, %d\"", windDir[0], windDir[1], windDir[2], windDir[3], windDir[4], windDir[5], windDir[6], windDir[7], windDir[8], windDir[9]);
   
   char buf[1000];
+
+  /*
   snprintf(buf, sizeof buf, "{"
                             "\"temperature\": %f,"
                             "\"pressure\": %f,"
@@ -117,7 +119,17 @@ void sendDataViaWifi1() {
                             "\"station_id\": \"5663b746-744a-40a4-a590-a7ac9abc48d8\""
                             "}",
     bmp.readTemperature(), bmp.readPressure(), humidity, rainCount*0.25, windSpeedCount*3.0, windSpeedCount*1.0, windDirection, solar_voltage);
-  
+  */
+    snprintf(buf, sizeof buf, "{"
+                            "\"humidity\": %f,"
+                            "\"precipitation\": %f,"
+                            "\"wind_gust\": %f,"
+                            "\"wind_speed\": %f,"
+                            "\"wind_direction\": %s,"
+                            "\"solar_incidence\": %d,"
+                            "\"station_id\": \"5663b746-744a-40a4-a590-a7ac9abc48d8\""
+                            "}", humidity, rainCount*0.25, windSpeedCount*3.0, windSpeedCount*1.0, windDirection, solar_voltage);
+
   int httpCode = 0;
       
   if ((WiFiMulti.run() == WL_CONNECTED)){
@@ -182,33 +194,78 @@ void setup(){
   Wire.begin();
   Serial.begin(9600);
 
+/*
   if (!bmp.begin(0x76))
   { //0x76 is the address of BMP280
     Serial.println(F("Could not find a valid BMP280 sensor, check wiring or "
                      "try a different address!"));
-    while (1)
+    while(1)
       delay(10);
   }
 
-  bmp.setSampling(Adafruit_BMP280::MODE_NORMAL,     /* Operating Mode. */
-                  Adafruit_BMP280::SAMPLING_X2,     /* Temp. oversampling */
-                  Adafruit_BMP280::SAMPLING_X16,    /* Pressure oversampling */
-                  Adafruit_BMP280::FILTER_X16,      /* Filtering. */
-                  Adafruit_BMP280::STANDBY_MS_500); /* Standby time. */
+  bmp.setSampling(Adafruit_BMP280::MODE_NORMAL,     // Operating Mode. 
+                  Adafruit_BMP280::SAMPLING_X2,     // Temp. oversampling
+                  Adafruit_BMP280::SAMPLING_X16,    // Pressure oversampling 
+                  Adafruit_BMP280::FILTER_X16,      // Filtering. 
+                  Adafruit_BMP280::STANDBY_MS_500); // Standby time.
 
+*/
   // Inicia a conexão do wifi
-  WiFi.mode(WIFI_STA);
+
+/*  WiFi.mode(WIFI_STA);
   WiFiMulti.addAP(STASSID, STAPSK);
   Serial.print("Conectando");
-  while (WiFi.status() != WL_CONNECTED) { //ENQUANTO STATUS FOR DIFERENTE DE CONECTADO
-    delay(500); //INTERVALO DE 500 MILISEGUNDOS
-    Serial.print("."); //ESCREVE O CARACTER NA SERIAL
-  }
-  Serial.print("\n Conectado. IP:");
-  Serial.println(WiFi.localIP());
+
+  */
+
+    WiFi.mode(WIFI_STA);
+  WiFiMulti.addAP("Wimax Luiz Gustavo Setten", "34346037");
+
+ // while (WiFi.status() != WL_CONNECTED) { //ENQUANTO STATUS FOR DIFERENTE DE CONECTADO
+   // delay(500); //INTERVALO DE 500 MILISEGUNDOS
+  //  Serial.print("."); //ESCREVE O CARACTER NA SERIAL
+  //}
+  //Serial.print("\n Conectado. IP:");
+  //Serial.println(WiFi.localIP());
 }
 
 void loop(){
+    if ((WiFiMulti.run() == WL_CONNECTED)) {
+
+    WiFiClient client;
+
+    HTTPClient http;
+
+    Serial.print("[HTTP] begin...\n");
+    if (http.begin(client, "http://www.google.com.br")) {  // HTTP
+
+
+      Serial.print("[HTTP] GET...\n");
+      // start connection and send HTTP header
+      int httpCode = http.GET();
+
+      // httpCode will be negative on error
+      if (httpCode > 0) {
+        // HTTP header has been send and Server response header has been handled
+        Serial.printf("[HTTP] GET... code: %d\n", httpCode);
+
+        // file found at server
+        if (httpCode == HTTP_CODE_OK || httpCode == HTTP_CODE_MOVED_PERMANENTLY) {
+          String payload = http.getString();
+          Serial.println(payload);
+        }
+      } else {
+        Serial.printf("[HTTP] GET... failed, error: %s\n", http.errorToString(httpCode).c_str());
+      }
+
+      http.end();
+    } else {
+      Serial.printf("[HTTP} Unable to connect\n");
+    }
+  }
+
+  delay(10000);
+  
   delay(50);
   if(sendToServer) {
     sendDataViaWifi1();
