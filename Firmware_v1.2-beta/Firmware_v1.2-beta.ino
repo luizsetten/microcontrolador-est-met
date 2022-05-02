@@ -41,8 +41,8 @@ const char *host = "http://192.168.0.106:80/records";
 
 //#define I2C_ADDRESS 0x48
 
-#define rain 13
-#define wind 12
+#define rain 12 //D6
+#define wind 13 //D7
 //#endif
 
 DHT dht(DHTPIN, DHTTYPE);
