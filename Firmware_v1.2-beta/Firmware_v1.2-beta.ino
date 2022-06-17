@@ -22,8 +22,8 @@ os_timer_t tmr1;
 volatile int windDirCount = 0;
 volatile float windDir[10];
 
-volatile int rainCount = 0;
-volatile int windSpeedCount = 0;
+volatile float rainCount = 0;
+volatile float windSpeedCount = 0;
 
 volatile bool sendToServer = false;
 const char *station_id = "5663b746-744a-40a4-a590-a7ac9abc48d8";
@@ -51,13 +51,13 @@ void ICACHE_RAM_ATTR funcaoInterrupcaoWind();
 
 void ICACHE_RAM_ATTR funcaoInterrupcaoRain()
 {
-  rainCount = rainCount + 1;
+  rainCount = rainCount + 0.33;
   Serial.println("Choveu");
 }
 
 void ICACHE_RAM_ATTR funcaoInterrupcaoWind()
 {
-  windSpeedCount = windSpeedCount + 1;
+  windSpeedCount = windSpeedCount + 0.34;
   Serial.println("Ventou");
 }
 
@@ -79,7 +79,7 @@ void sendDataViaWifi1()
 
   Serial.printf("Pino A0: %f\n", voltage);
   Serial.printf("Pino A1: %f\n", solar_voltage);
-  Serial.printf("DHT Umidade: %f %\n", humidity);
+  Serial.printf("DHT Umidade: %f\n", humidity);
   Serial.printf("DHT Temperatura: %f °C\n", dhtTemperature);
   Serial.printf("BMP Pessão: %f Pa\n", bmpPressure);
   Serial.printf("BMP Temperatura: %f °C\n", bmpTemperature);
@@ -109,9 +109,9 @@ void sendDataViaWifi1()
            bmpTemperature,
            bmpPressure,
            humidity,
-           rainCount * 0.33,
-           windSpeedCount * 0.34, // em m/s
-           windSpeedCount * 1.0,
+           rainCount,
+           windSpeedCount, // em m/s
+           windSpeedCount,
            windDirection,
            solar_voltage,
            station_id);
@@ -119,6 +119,7 @@ void sendDataViaWifi1()
   int httpCode = 0;
 
   Serial.printf("\n\nIniciando envio de dados\n");
+  
   if ((WiFiMulti.run() == WL_CONNECTED))
   {
     Serial.print("Conectado\n");
@@ -126,7 +127,7 @@ void sendDataViaWifi1()
     HTTPClient http;
     int tentativas = 0;
 
-    while (httpCode != HTTP_CODE_OK && tentativas < 10)
+    while (httpCode != HTTP_CODE_OK && tentativas < 1)
     {
       tentativas++;
 
@@ -204,7 +205,7 @@ void setup()
 
   WiFi.mode(WIFI_STA);
   WiFiMulti.addAP(STASSID, STAPSK);
-  
+
   Serial.print("\n\nConfigurado\n");
 }
 
