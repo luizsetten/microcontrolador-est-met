@@ -20,17 +20,16 @@ os_timer_t tmr1;
 
 // Direção do vento
 volatile int windDirCount = 0;
-volatile int16_t windDir[10];
+volatile float windDir[10];
 
 volatile int rainCount = 0;
 volatile int windSpeedCount = 0;
 
 volatile bool sendToServer = false;
-const char *host = "http://192.168.0.106:80/records";
+const char *station_id = "5663b746-744a-40a4-a590-a7ac9abc48d8";
 
-// COnfigurações wifi
-#define SERVER_IP "192.168.0.106:80"
-//#ifndef STASSID
+// Configurações wifi
+
 #define STASSID "Wimax Luiz Gustavo Setten"
 #define STAPSK "34346037"
 
@@ -42,7 +41,6 @@ const char *host = "http://192.168.0.106:80/records";
 
 #define rain 12 // D6
 #define wind 13 // D7
-//#endif
 
 DHT dht(DHTPIN, DHTTYPE);
 
@@ -73,16 +71,16 @@ void sendDataViaWifi1()
   float t = dht.readTemperature();
   Serial.printf("Starting sending data");
 
-  int16_t voltage = 0;
+  float voltage = 0;
   Serial.print("Pino A0: ");
-  voltage = ads1115.readADC_SingleEnded(0);
+  voltage =  ads1115.computeVolts(ads1115.readADC_SingleEnded(0));
   Serial.print(voltage);
   Serial.println("");
 
-  int16_t solar_voltage = 0;
+  float solar_voltage = 0;
   Serial.print("Pino A1: ");
-  solar_voltage = ads1115.readADC_SingleEnded(1);
-  Serial.print(voltage);
+  solar_voltage = ads1115.computeVolts(ads1115.readADC_SingleEnded(1));
+  Serial.print(solar_voltage);
   Serial.println("");
 
   Serial.print("Umidade: ");
@@ -105,52 +103,54 @@ void sendDataViaWifi1()
   Serial.println(" m");
 
   char windDirection[200];
-  snprintf(windDirection, sizeof windDirection, "\"%d, %d, %d, %d, %d, %d, %d, %d, %d, %d\"", windDir[0], windDir[1], windDir[2], windDir[3], windDir[4], windDir[5], windDir[6], windDir[7], windDir[8], windDir[9]);
+  snprintf(windDirection, sizeof windDirection, "\"%f, %f, %f, %f, %f, %f, %f, %f, %f, %f\"", windDir[0], windDir[1], windDir[2], windDir[3], windDir[4], windDir[5], windDir[6], windDir[7], windDir[8], windDir[9]);
 
+  Serial.print("Wind dir");
+  Serial.print(windDirection);
+  Serial.println("");
+  
   char buf[1000];
 
-  snprintf(buf, sizeof buf, "{"
-                            "\"temperature\": %f,"
-                            "\"pressure\": %f,"
-                            "\"humidity\": %f,"
-                            "\"precipitation\": %f,"
-                            "\"wind_gust\": %f,"
-                            "\"wind_speed\": %f,"
-                            "\"wind_direction\": %s,"
-                            "\"solar_incidence\": %d,"
-                            "\"station_id\": \"5663b746-744a-40a4-a590-a7ac9abc48d8\""
-                            "}",
-           bmp.readTemperature(), bmp.readPressure(), humidity, rainCount * 0.25, windSpeedCount * 3.0, windSpeedCount * 1.0, windDirection, solar_voltage);
+  snprintf(buf, sizeof buf, 
+    "{"
+    "\"temperature\": %f,"
+    "\"pressure\": %f,"
+    "\"humidity\": %f,"
+    "\"precipitation\": %f,"
+    "\"wind_gust\": %f,"
+    "\"wind_speed\": %f,"
+    "\"wind_direction\": %s,"
+    "\"solar_incidence\": %f,"
+    "\"station_id\": \"%s\""
+    "}",
 
-  /*
-      snprintf(buf, sizeof buf, "{"
-                              "\"humidity\": %f,"
-                              "\"precipitation\": %f,"
-                              "\"wind_gust\": %f,"
-                              "\"wind_speed\": %f,"
-                              "\"wind_direction\": %s,"
-                              "\"solar_incidence\": %d,"
-                              "\"station_id\": \"5663b746-744a-40a4-a590-a7ac9abc48d8\""
-                              "}", humidity, rainCount*0.25, windSpeedCount*3.0, windSpeedCount*1.0, windDirection, solar_voltage);
-  */
+    bmp.readTemperature(), 
+    bmp.readPressure(), 
+    humidity, 
+    rainCount * 0.25, 
+    windSpeedCount * 3.0, 
+    windSpeedCount * 1.0, 
+    windDirection, 
+    solar_voltage,
+    station_id);
+
   int httpCode = 0;
 
   if ((WiFiMulti.run() == WL_CONNECTED))
   {
-    Serial.print("Está conectado1");
+    Serial.print("Conectado");
     WiFiClient client;
     HTTPClient http;
 
-    // if () {  // HTTP
     while (httpCode != HTTP_CODE_OK)
     {
-      http.begin(client, "http://192.168.0.112:3333/records");
+      http.begin(client, "http://wheater-if.ddns.net/api/records");
       http.addHeader("Content-Type", "application/json");
       Serial.print("[HTTP] POST...\n");
 
       if (WiFi.status() == WL_CONNECTED)
       {
-        Serial.print("Está conectado2");
+        Serial.print("Enviando dados");
         httpCode = http.POST(buf);
       }
 
@@ -164,12 +164,6 @@ void sendDataViaWifi1()
           Serial.println("received payload:\n<<");
           Serial.println(payload);
           Serial.println(">>");
-            if (bmp.readTemperature() > 150)
-            {
-              Serial.println("Problem detected, reloading ESP");
-
-              ESP.restart();
-            }
         }
       }
       else
@@ -183,7 +177,6 @@ void sendDataViaWifi1()
     rainCount = 0;
     windSpeedCount = 0;
   }
-  //}
 }
 
 void readWindDir(void *z)
@@ -193,8 +186,7 @@ void readWindDir(void *z)
     windDirCount = 0;
   }
 
-  int16_t adc0;
-  windDir[windDirCount] = ads1115.readADC_SingleEnded(0);
+  windDir[windDirCount] = ads1115.computeVolts(ads1115.readADC_SingleEnded(0)/3.03)*360;
   windDirCount = windDirCount + 1;
 }
 
@@ -212,7 +204,6 @@ void setup()
   ads1115.begin(0x48);
 
   Wire.begin();
-  Serial.begin(9600);
   Serial.begin(115200);
 
   if (!bmp.begin(0x76))
