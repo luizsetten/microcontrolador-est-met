@@ -27,6 +27,7 @@ volatile int windSpeedCount = 0;
 
 volatile bool sendToServer = false;
 const char *station_id = "5663b746-744a-40a4-a590-a7ac9abc48d8";
+const float Vcc = 3.03;
 
 // Configurações wifi
 
@@ -68,108 +69,87 @@ void sendDataViaWifi(void *x)
 void sendDataViaWifi1()
 {
   float humidity = dht.readHumidity();
-  float t = dht.readTemperature();
-  Serial.printf("Starting sending data");
+  float dhtTemperature = dht.readTemperature();
+  float voltage = ads1115.computeVolts(ads1115.readADC_SingleEnded(0));
+  float solar_voltage = ads1115.computeVolts(ads1115.readADC_SingleEnded(1));
+  float bmpTemperature = bmp.readTemperature();
+  float bmpPressure = bmp.readPressure();
 
-  float voltage = 0;
-  Serial.print("Pino A0: ");
-  voltage =  ads1115.computeVolts(ads1115.readADC_SingleEnded(0));
-  Serial.print(voltage);
-  Serial.println("");
+  Serial.printf("\n\nDados obtidos: \n");
 
-  float solar_voltage = 0;
-  Serial.print("Pino A1: ");
-  solar_voltage = ads1115.computeVolts(ads1115.readADC_SingleEnded(1));
-  Serial.print(solar_voltage);
-  Serial.println("");
-
-  Serial.print("Umidade: ");
-  Serial.print(humidity);
-  Serial.print(" %t");
-  Serial.print("Temperatura: ");
-  Serial.print(t);
-  Serial.println(" *C");
-
-  Serial.print(F("Temperature = "));
-  Serial.print(bmp.readTemperature());
-  Serial.println(" *C");
-
-  Serial.print(F("Pressure = "));
-  Serial.print(bmp.readPressure());
-  Serial.println(" Pa");
-
-  Serial.print(F("Approx altitude = "));
-  Serial.print(bmp.readAltitude(1018)); /* Adjusted to local forecast! */
-  Serial.println(" m");
+  Serial.printf("Pino A0: %f\n", voltage);
+  Serial.printf("Pino A1: %f\n", solar_voltage);
+  Serial.printf("DHT Umidade: %f %\n", humidity);
+  Serial.printf("DHT Temperatura: %f °C\n", dhtTemperature);
+  Serial.printf("BMP Pessão: %f Pa\n", bmpPressure);
+  Serial.printf("BMP Temperatura: %f °C\n", bmpTemperature);
+  Serial.printf("Altitude Aproximada: %f m\n", bmp.readAltitude(1018));
 
   char windDirection[200];
+
   snprintf(windDirection, sizeof windDirection, "\"%f, %f, %f, %f, %f, %f, %f, %f, %f, %f\"", windDir[0], windDir[1], windDir[2], windDir[3], windDir[4], windDir[5], windDir[6], windDir[7], windDir[8], windDir[9]);
 
-  Serial.print("Wind dir");
-  Serial.print(windDirection);
-  Serial.println("");
-  
+  Serial.printf("Direção do vento %s \n", windDirection);
+
   char buf[1000];
 
-  snprintf(buf, sizeof buf, 
-    "{"
-    "\"temperature\": %f,"
-    "\"pressure\": %f,"
-    "\"humidity\": %f,"
-    "\"precipitation\": %f,"
-    "\"wind_gust\": %f,"
-    "\"wind_speed\": %f,"
-    "\"wind_direction\": %s,"
-    "\"solar_incidence\": %f,"
-    "\"station_id\": \"%s\""
-    "}",
+  snprintf(buf, sizeof buf,
+           "{"
+           "\"temperature\": %f,"
+           "\"pressure\": %f,"
+           "\"humidity\": %f,"
+           "\"precipitation\": %f,"
+           "\"wind_gust\": %f,"
+           "\"wind_speed\": %f,"
+           "\"wind_direction\": %s,"
+           "\"solar_incidence\": %f,"
+           "\"station_id\": \"%s\""
+           "}",
 
-    bmp.readTemperature(), 
-    bmp.readPressure(), 
-    humidity, 
-    rainCount * 0.25, 
-    windSpeedCount * 3.0, 
-    windSpeedCount * 1.0, 
-    windDirection, 
-    solar_voltage,
-    station_id);
+           bmpTemperature,
+           bmpPressure,
+           humidity,
+           rainCount * 0.33,
+           windSpeedCount * 0.34, // em m/s
+           windSpeedCount * 1.0,
+           windDirection,
+           solar_voltage,
+           station_id);
 
   int httpCode = 0;
 
+  Serial.printf("\n\nIniciando envio de dados\n");
   if ((WiFiMulti.run() == WL_CONNECTED))
   {
-    Serial.print("Conectado");
+    Serial.print("Conectado\n");
     WiFiClient client;
     HTTPClient http;
+    int tentativas = 0;
 
-    while (httpCode != HTTP_CODE_OK)
+    while (httpCode != HTTP_CODE_OK && tentativas < 10)
     {
+      tentativas++;
+
       http.begin(client, "http://wheater-if.ddns.net/api/records");
       http.addHeader("Content-Type", "application/json");
-      Serial.print("[HTTP] POST...\n");
 
-      if (WiFi.status() == WL_CONNECTED)
-      {
-        Serial.print("Enviando dados");
-        httpCode = http.POST(buf);
-      }
+      Serial.printf("Tentativa %d ...\n", tentativas);
+      Serial.print("Requisição [HTTP] POST...\n");
 
-      // httpCode will be negative on error
-      if (httpCode > 0)
+      httpCode = http.POST(buf);
+
+      Serial.printf("Resposta [HTTP] POST... code: %d\n", httpCode);
+
+      if (httpCode == HTTP_CODE_OK)
       {
-        Serial.printf("[HTTP] POST... code: %d\n", httpCode);
-        if (httpCode == HTTP_CODE_OK)
-        {
-          const String &payload = http.getString();
-          Serial.println("received payload:\n<<");
-          Serial.println(payload);
-          Serial.println(">>");
-        }
+        const String &payload = http.getString();
+        Serial.println("Payload recebido:\n <<");
+        Serial.println(payload);
+        Serial.println(">>");
       }
       else
       {
-        Serial.printf("[HTTP] POST... code: %d\n", httpCode);
-        Serial.printf("[HTTP] POST... failed, error: %s\n", http.errorToString(httpCode).c_str());
+        Serial.printf("Resposta [HTTP] POST... failed, error: %s\n", http.errorToString(httpCode).c_str());
         delay(3000);
       }
       http.end();
@@ -186,7 +166,7 @@ void readWindDir(void *z)
     windDirCount = 0;
   }
 
-  windDir[windDirCount] = ads1115.computeVolts(ads1115.readADC_SingleEnded(0)/3.03)*360;
+  windDir[windDirCount] = ads1115.computeVolts(ads1115.readADC_SingleEnded(0) / Vcc) * 360;
   windDirCount = windDirCount + 1;
 }
 
@@ -224,7 +204,8 @@ void setup()
 
   WiFi.mode(WIFI_STA);
   WiFiMulti.addAP(STASSID, STAPSK);
-  Serial.print("Conectando");
+  
+  Serial.print("\n\nConfigurado\n");
 }
 
 void loop()
@@ -237,3 +218,6 @@ void loop()
     sendToServer = false;
   }
 }
+
+// http://cta.if.ufrgs.br/projects/estacao-meteorologica-modular/wiki/Anem%C3%B4metro
+// https://pt.aliexpress.com/item/4000907599589.html?spm=a2g0o.ppclist.product.2.6c85BVmwBVmwdO&pdp_npi=2%40dis%21COP%21COP%20108%2C758.07%21COP%20108%2C758.07%21%21%21%21%21%402101d1b016554366019494198e242d%2110000010488518431%21btf&_t=pvid%3Ac1f8165a-539b-4653-9eac-5ad1f917bab6&afTraceInfo=4000907599589__pc__pcBridgePPC__xxxxxx__1655436602&gatewayAdapt=glo2bra
