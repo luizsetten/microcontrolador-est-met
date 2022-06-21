@@ -31,8 +31,8 @@ const float Vcc = 3.03;
 
 // Configurações wifi
 
-#define STASSID "Wimax Luiz Gustavo Setten"
-#define STAPSK "34346037"
+#define STASSID "ASUS_14"
+#define STAPSK "center_2527"
 
 // Configurações DHT
 #define DHTPIN 2      // pino que estamos conectado
@@ -78,12 +78,14 @@ void sendDataViaWifi1()
   Serial.printf("\n\nDados obtidos: \n");
 
   Serial.printf("Pino A0: %f\n", voltage);
-  Serial.printf("Pino A1: %f\n", solar_voltage);
+  Serial.printf("Pino A1: %f\n", (solar_voltage / (39.1 * 76.09) * 1000));
   Serial.printf("DHT Umidade: %f\n", humidity);
   Serial.printf("DHT Temperatura: %f °C\n", dhtTemperature);
   Serial.printf("BMP Pessão: %f Pa\n", bmpPressure);
   Serial.printf("BMP Temperatura: %f °C\n", bmpTemperature);
   Serial.printf("Altitude Aproximada: %f m\n", bmp.readAltitude(1018));
+  Serial.printf("Velocidade do Vento: %f m/s\n", windSpeedCount);
+  Serial.printf("Chuva: %f mm\n", rainCount);
 
   char windDirection[200];
 
@@ -160,6 +162,53 @@ void sendDataViaWifi1()
   }
 }
 
+boolean fuzzyCompare(float compareValue, float value)
+{
+  #define VARYVALUE 0.05
+  
+   if ( (value > (compareValue * (1.0-VARYVALUE)))  && (value < (compareValue *(1.0+VARYVALUE))) )
+   {
+     return true;
+   }
+   return false;
+}
+
+float calculateDirection(float dirVoltage) {
+  if(fuzzyCompare(dirVoltage, (0.32 / 5) * Vcc)) {
+    return 112.5;
+  } else if (fuzzyCompare(dirVoltage, (0.41 / 5) * Vcc)) {
+    return 67.5;
+  } else if (fuzzyCompare(dirVoltage, (0.45 / 5) * Vcc)) {
+    return 90;
+  } else if (fuzzyCompare(dirVoltage, (0.62 / 5) * Vcc)) {
+    return 157.5;
+  } else if (fuzzyCompare(dirVoltage, (0.9 / 5) * Vcc)) {
+    return 135;
+  } else if (fuzzyCompare(dirVoltage, (1.19 / 5) * Vcc)) {
+    return 202.5;
+  } else if (fuzzyCompare(dirVoltage, (1.4 / 5) * Vcc)) {
+    return 180;
+  } else if (fuzzyCompare(dirVoltage, (1.98 / 5) * Vcc)) {
+    return 22.5;
+  } else if (fuzzyCompare(dirVoltage, (2.25 / 5) * Vcc)) {
+    return 45;
+  } else if (fuzzyCompare(dirVoltage, (2.93 / 5) * Vcc)) {
+    return 247.5;
+  } else if (fuzzyCompare(dirVoltage, (3.08 / 5) * Vcc)) {
+    return 225;
+  } else if (fuzzyCompare(dirVoltage, (3.43 / 5) * Vcc)) {
+    return 337.5;
+  } else if (fuzzyCompare(dirVoltage, (3.84 / 5) * Vcc)) {
+    return 0;
+  } else if (fuzzyCompare(dirVoltage, (4.04 / 5) * Vcc)) {
+    return 292.5;
+  } else if (fuzzyCompare(dirVoltage, (4.33 / 5) * Vcc)) {
+    return 315;
+  } else {
+    return 270;
+  }
+}
+
 void readWindDir(void *z)
 {
   if (windDirCount == 10)
@@ -167,7 +216,9 @@ void readWindDir(void *z)
     windDirCount = 0;
   }
 
-  windDir[windDirCount] = ads1115.computeVolts(ads1115.readADC_SingleEnded(0) / Vcc) * 360;
+  float dirVoltage = ads1115.computeVolts(ads1115.readADC_SingleEnded(0));
+  windDir[windDirCount] = calculateDirection(dirVoltage);
+  printf("Tensao: %f | Direção: %f \n\n", dirVoltage, windDir[windDirCount]);
   windDirCount = windDirCount + 1;
 }
 
