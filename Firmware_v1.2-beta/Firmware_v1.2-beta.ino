@@ -4,11 +4,22 @@
 #include <ESP8266HTTPClient.h>
 #include <WiFiClient.h>
 #include <user_interface.h>
-#include "DHT.h"
+#include <DHT.h>
 #include <Wire.h>
 #include <SPI.h>
 #include <Adafruit_BMP280.h>
 #include <Adafruit_ADS1X15.h>
+#include <Time.h>
+// Fazer engenharia reversa para adaptar https://github.com/switchdoclabs/SDL_Weather_80422/blob/master/SDL_Weather_80422.cpp
+
+//#include "SDL_Weather_80422.h"
+#include <SDL_Weather_80422.h>
+
+//#define pinLED LED_BUILTIN  // LED connected to digital pin 16
+//#define pinAnem 13 // Anenometer connected to pin 13 - Int 5 - Mega   / Uno pin 2
+//#define pinRain 12 // Anenometer connected to pin 13 - Int 0 - Mega   / Uno Pin 3
+//#define intAnem 5  // int 0 (check for Uno)
+//#define intRain 1  // int 1
 
 ESP8266WiFiMulti WiFiMulti;
 
@@ -43,6 +54,8 @@ const float Vcc = 3.03;
 #define rain 12 // D6
 #define wind 13 // D7
 
+SDL_Weather_80422 weatherStation(wind, digitalPinToInterrupt(wind));
+
 DHT dht(DHTPIN, DHTTYPE);
 
 // Cria rotinas de interrupção (para os dois pinos de interrupção, chuva e velocidade do vento)
@@ -51,7 +64,7 @@ void ICACHE_RAM_ATTR funcaoInterrupcaoWind();
 
 void ICACHE_RAM_ATTR funcaoInterrupcaoRain()
 {
-  rainCount = rainCount + 0.33;
+  rainCount = rainCount + (0.2794 / 2);
   Serial.println("Choveu");
 }
 
@@ -70,21 +83,28 @@ void sendDataViaWifi1()
 {
   float humidity = dht.readHumidity();
   float dhtTemperature = dht.readTemperature();
-  float voltage = ads1115.computeVolts(ads1115.readADC_SingleEnded(0));
+  float direction_voltage = ads1115.computeVolts(ads1115.readADC_SingleEnded(0));
   float solar_voltage = ads1115.computeVolts(ads1115.readADC_SingleEnded(1));
+  float solar_incidence = (solar_voltage * 1000) / (39.1 * 76.09);
   float bmpTemperature = bmp.readTemperature();
   float bmpPressure = bmp.readPressure();
+  float windSpeed = weatherStation.current_wind_speed();
+  float windGust = weatherStation.get_wind_gust();
+
+  weatherStation.reset_wind_gust();
 
   Serial.printf("\n\nDados obtidos: \n");
 
-  Serial.printf("Pino A0: %f\n", voltage);
-  Serial.printf("Pino A1: %f\n", (solar_voltage / (39.1 * 76.09) * 1000));
+  Serial.printf("Pino A0: %f\n", direction_voltage);
+  Serial.printf("Pino A1: %f\n", solar_voltage);
+  Serial.printf("Incidenência Solar: %f\n", solar_incidence);
   Serial.printf("DHT Umidade: %f\n", humidity);
   Serial.printf("DHT Temperatura: %f °C\n", dhtTemperature);
   Serial.printf("BMP Pessão: %f Pa\n", bmpPressure);
   Serial.printf("BMP Temperatura: %f °C\n", bmpTemperature);
   Serial.printf("Altitude Aproximada: %f m\n", bmp.readAltitude(1018));
-  Serial.printf("Velocidade do Vento: %f m/s\n", windSpeedCount);
+  Serial.printf("Velocidade do Vento: %f m/s\n", windSpeed);
+  Serial.printf("Rajada do Vento: %f m/s\n", windGust);
   Serial.printf("Chuva: %f mm\n", rainCount);
 
   char windDirection[200];
@@ -115,13 +135,13 @@ void sendDataViaWifi1()
            windSpeedCount, // em m/s
            windSpeedCount,
            windDirection,
-           solar_voltage,
+           solar_incidence,
            station_id);
 
   int httpCode = 0;
 
   Serial.printf("\n\nIniciando envio de dados\n");
-  
+
   if ((WiFiMulti.run() == WL_CONNECTED))
   {
     Serial.print("Conectado\n");
@@ -164,47 +184,79 @@ void sendDataViaWifi1()
 
 boolean fuzzyCompare(float compareValue, float value)
 {
-  #define VARYVALUE 0.05
-  
-   if ( (value > (compareValue * (1.0-VARYVALUE)))  && (value < (compareValue *(1.0+VARYVALUE))) )
-   {
-     return true;
-   }
-   return false;
+#define VARYVALUE 0.05
+
+  if ((value > (compareValue * (1.0 - VARYVALUE))) && (value < (compareValue * (1.0 + VARYVALUE))))
+  {
+    return true;
+  }
+  return false;
 }
 
-float calculateDirection(float dirVoltage) {
-  if(fuzzyCompare(dirVoltage, (0.32 / 5) * Vcc)) {
+float calculateDirection(float dirVoltage)
+{
+  if (fuzzyCompare(dirVoltage, (0.32 / 5) * Vcc))
+  {
     return 112.5;
-  } else if (fuzzyCompare(dirVoltage, (0.41 / 5) * Vcc)) {
+  }
+  else if (fuzzyCompare(dirVoltage, (0.41 / 5) * Vcc))
+  {
     return 67.5;
-  } else if (fuzzyCompare(dirVoltage, (0.45 / 5) * Vcc)) {
+  }
+  else if (fuzzyCompare(dirVoltage, (0.45 / 5) * Vcc))
+  {
     return 90;
-  } else if (fuzzyCompare(dirVoltage, (0.62 / 5) * Vcc)) {
+  }
+  else if (fuzzyCompare(dirVoltage, (0.62 / 5) * Vcc))
+  {
     return 157.5;
-  } else if (fuzzyCompare(dirVoltage, (0.9 / 5) * Vcc)) {
+  }
+  else if (fuzzyCompare(dirVoltage, (0.9 / 5) * Vcc))
+  {
     return 135;
-  } else if (fuzzyCompare(dirVoltage, (1.19 / 5) * Vcc)) {
+  }
+  else if (fuzzyCompare(dirVoltage, (1.19 / 5) * Vcc))
+  {
     return 202.5;
-  } else if (fuzzyCompare(dirVoltage, (1.4 / 5) * Vcc)) {
+  }
+  else if (fuzzyCompare(dirVoltage, (1.4 / 5) * Vcc))
+  {
     return 180;
-  } else if (fuzzyCompare(dirVoltage, (1.98 / 5) * Vcc)) {
+  }
+  else if (fuzzyCompare(dirVoltage, (1.98 / 5) * Vcc))
+  {
     return 22.5;
-  } else if (fuzzyCompare(dirVoltage, (2.25 / 5) * Vcc)) {
+  }
+  else if (fuzzyCompare(dirVoltage, (2.25 / 5) * Vcc))
+  {
     return 45;
-  } else if (fuzzyCompare(dirVoltage, (2.93 / 5) * Vcc)) {
+  }
+  else if (fuzzyCompare(dirVoltage, (2.93 / 5) * Vcc))
+  {
     return 247.5;
-  } else if (fuzzyCompare(dirVoltage, (3.08 / 5) * Vcc)) {
+  }
+  else if (fuzzyCompare(dirVoltage, (3.08 / 5) * Vcc))
+  {
     return 225;
-  } else if (fuzzyCompare(dirVoltage, (3.43 / 5) * Vcc)) {
+  }
+  else if (fuzzyCompare(dirVoltage, (3.43 / 5) * Vcc))
+  {
     return 337.5;
-  } else if (fuzzyCompare(dirVoltage, (3.84 / 5) * Vcc)) {
+  }
+  else if (fuzzyCompare(dirVoltage, (3.84 / 5) * Vcc))
+  {
     return 0;
-  } else if (fuzzyCompare(dirVoltage, (4.04 / 5) * Vcc)) {
+  }
+  else if (fuzzyCompare(dirVoltage, (4.04 / 5) * Vcc))
+  {
     return 292.5;
-  } else if (fuzzyCompare(dirVoltage, (4.33 / 5) * Vcc)) {
+  }
+  else if (fuzzyCompare(dirVoltage, (4.33 / 5) * Vcc))
+  {
     return 315;
-  } else {
+  }
+  else
+  {
     return 270;
   }
 }
@@ -229,9 +281,9 @@ void setup()
   os_timer_setfn(&tmr1, sendDataViaWifi, NULL); // Indica ao Timer qual sera sua Sub rotina.
   os_timer_arm(&tmr1, 60000, true);             // Inidica ao Timer seu Tempo em mS e se sera repetido ou apenas uma vez (loop = true)
   attachInterrupt(digitalPinToInterrupt(rain), funcaoInterrupcaoRain, FALLING);
-  attachInterrupt(digitalPinToInterrupt(wind), funcaoInterrupcaoWind, FALLING);
+  //attachInterrupt(digitalPinToInterrupt(wind), funcaoInterrupcaoWind, FALLING); // Configurado na lib
   pinMode(rain, INPUT);
-  pinMode(wind, INPUT);
+  //pinMode(wind, INPUT); // Configurado na lib
   dht.begin();
   ads1115.begin(0x48);
 
@@ -252,6 +304,8 @@ void setup()
                   Adafruit_BMP280::FILTER_X16,      // Filtering.
                   Adafruit_BMP280::STANDBY_MS_500); // Standby time.
 
+  weatherStation.setWindMode(SDL_MODE_SAMPLE, 5.0);
+  
   // Inicia a conexão do wifi
 
   WiFi.mode(WIFI_STA);
