@@ -320,9 +320,9 @@ void setup()
   os_timer_setfn(&tmr1, sendDataViaWifi, NULL); // Indica ao Timer qual sera sua Sub rotina.
   os_timer_arm(&tmr1, 60000, true);             // Inidica ao Timer seu Tempo em mS e se sera repetido ou apenas uma vez (loop = true)
   attachInterrupt(digitalPinToInterrupt(rain), funcaoInterrupcaoRain, FALLING);
-  // attachInterrupt(digitalPinToInterrupt(wind), funcaoInterrupcaoWind, FALLING); // Configurado na lib
+  attachInterrupt(digitalPinToInterrupt(wind), funcaoInterrupcaoWind, FALLING);
   pinMode(rain, INPUT);
-  // pinMode(wind, INPUT); // Configurado na lib
+  pinMode(wind, INPUT);
   dht.begin();
   ads1115.begin(0x48);
 
