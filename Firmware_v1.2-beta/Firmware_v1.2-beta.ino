@@ -23,7 +23,7 @@ volatile int windDirCount = 0;
 volatile float windDir[10];
 
 volatile float rainCount = 0;
-volatile float windSpeedCount = 0;
+//volatile float windSpeedCount = 0;
 
 volatile bool sendToServer = false;
 const char *station_id = "5663b746-744a-40a4-a590-a7ac9abc48d8";
@@ -31,8 +31,8 @@ const float Vcc = 3.03;
 
 // Configurações wifi
 
-#define STASSID "ASUS_14"
-#define STAPSK "center_2527"
+#define STASSID "wifi1"
+#define STAPSK "senha1"
 
 // Configurações DHT
 #define DHTPIN 2      // pino que estamos conectado
@@ -42,6 +42,16 @@ const float Vcc = 3.03;
 
 #define rain 12 // D6
 #define wind 13 // D7
+#define WIND_FACTOR 2.400 
+
+unsigned long lastWindTime;
+
+long currentWindCount = 0;
+unsigned long shortestWindTime =0;
+float currentWindSpeed = 0.0;
+float sampleTime = 5.0;
+unsigned long startSampleTime = 0;
+
 
 DHT dht(DHTPIN, DHTTYPE);
 
@@ -57,8 +67,50 @@ void ICACHE_RAM_ATTR funcaoInterrupcaoRain()
 
 void ICACHE_RAM_ATTR funcaoInterrupcaoWind()
 {
-  windSpeedCount = windSpeedCount + 0.34;
-  Serial.println("Ventou");
+  unsigned long currentTime= (unsigned long)(micros()-lastWindTime);
+
+  lastWindTime=micros();
+  if(currentTime>1000)   // debounce
+  {
+     currentWindCount++;
+    if(currentTime<shortestWindTime)
+    {
+     shortestWindTime=currentTime;
+    }
+ 
+  }
+}
+
+float get_wind_gust()
+{
+  unsigned long latestTime;
+  latestTime = shortestWindTime;
+  shortestWindTime=0xffffffff;
+  double time=latestTime/1000000.0;  // in microseconds
+  shortestWindTime = 0xffffffff;
+  return (1/(time))*WIND_FACTOR/2;
+
+}
+
+float get_current_wind_speed()
+{
+  startSampleTime = micros();
+   unsigned long compareValue;
+   compareValue = sampleTime*1000000;
+  
+   if (micros() - startSampleTime >= compareValue)
+    {
+      float timeSpan;
+      timeSpan = (micros() - startSampleTime);
+ 
+      currentWindSpeed = ((float)currentWindCount/(timeSpan)) * WIND_FACTOR*1000000;
+
+      currentWindCount = 0;
+      
+      startSampleTime = micros();
+      }
+  
+    return currentWindSpeed;
 }
 
 void sendDataViaWifi(void *x)
@@ -74,17 +126,20 @@ void sendDataViaWifi1()
   float solar_voltage = ads1115.computeVolts(ads1115.readADC_SingleEnded(1));
   float bmpTemperature = bmp.readTemperature();
   float bmpPressure = bmp.readPressure();
+  float windSpeed = get_current_wind_speed()/3.6;
+  float windGust = get_wind_gust()/3.6;
 
   Serial.printf("\n\nDados obtidos: \n");
 
   Serial.printf("Pino A0: %f\n", voltage);
-  Serial.printf("Pino A1: %f\n", (solar_voltage / (39.1 * 76.09) * 1000));
+  Serial.printf("Pino A1: %f\n", (solar_voltage * 1000) / (39.1 * 76.09));
   Serial.printf("DHT Umidade: %f\n", humidity);
   Serial.printf("DHT Temperatura: %f °C\n", dhtTemperature);
   Serial.printf("BMP Pessão: %f Pa\n", bmpPressure);
   Serial.printf("BMP Temperatura: %f °C\n", bmpTemperature);
   Serial.printf("Altitude Aproximada: %f m\n", bmp.readAltitude(1018));
-  Serial.printf("Velocidade do Vento: %f m/s\n", windSpeedCount);
+  Serial.printf("Velocidade do Vento: %f km/h\n", windSpeed);
+    Serial.printf("Rajada do Vento: %f km/h\n", windGust);
   Serial.printf("Chuva: %f mm\n", rainCount);
 
   char windDirection[200];
@@ -112,8 +167,8 @@ void sendDataViaWifi1()
            bmpPressure,
            humidity,
            rainCount,
-           windSpeedCount, // em m/s
-           windSpeedCount,
+           windGust,
+           windSpeed,
            windDirection,
            solar_voltage,
            station_id);
@@ -158,7 +213,6 @@ void sendDataViaWifi1()
       http.end();
     }
     rainCount = 0;
-    windSpeedCount = 0;
   }
 }
 
@@ -256,6 +310,7 @@ void setup()
 
   WiFi.mode(WIFI_STA);
   WiFiMulti.addAP(STASSID, STAPSK);
+  WiFiMulti.addAP("wifi2", "senha2");
 
   Serial.print("\n\nConfigurado\n");
 }
