@@ -63,8 +63,6 @@ float currentWindSpeed = 0.0;
 float sampleTime = 5.0;
 unsigned long startSampleTime = 0;
 
-SDL_Weather_80422 weatherStation(wind, digitalPinToInterrupt(wind));
-
 DHT dht(DHTPIN, DHTTYPE);
 
 // Cria rotinas de interrupção (para os dois pinos de interrupção, chuva e velocidade do vento)
@@ -344,8 +342,6 @@ void setup()
                   Adafruit_BMP280::SAMPLING_X16,    // Pressure oversampling
                   Adafruit_BMP280::FILTER_X16,      // Filtering.
                   Adafruit_BMP280::STANDBY_MS_500); // Standby time.
-
-  weatherStation.setWindMode(SDL_MODE_SAMPLE, 5.0);
 
   // Inicia a conexão do wifi
 
