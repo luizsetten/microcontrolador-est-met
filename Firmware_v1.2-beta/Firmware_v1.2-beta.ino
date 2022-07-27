@@ -10,16 +10,6 @@
 #include <Adafruit_BMP280.h>
 #include <Adafruit_ADS1X15.h>
 #include <Time.h>
-// Fazer engenharia reversa para adaptar https://github.com/switchdoclabs/SDL_Weather_80422/blob/master/SDL_Weather_80422.cpp
-
-//#include "SDL_Weather_80422.h"
-#include <SDL_Weather_80422.h>
-
-//#define pinLED LED_BUILTIN  // LED connected to digital pin 16
-//#define pinAnem 13 // Anenometer connected to pin 13 - Int 5 - Mega   / Uno pin 2
-//#define pinRain 12 // Anenometer connected to pin 13 - Int 0 - Mega   / Uno Pin 3
-//#define intAnem 5  // int 0 (check for Uno)
-//#define intRain 1  // int 1
 
 ESP8266WiFiMulti WiFiMulti;
 
@@ -140,13 +130,11 @@ void sendDataViaWifi1()
 
   Serial.printf("\n\nDados obtidos: \n");
 
-  Serial.printf("Pino A0: %f\n", voltage);
   Serial.printf("Pino A1: %f\n", (solar_voltage * 1000) / (39.1 * 76.09));
   Serial.printf("DHT Umidade: %f\n", humidity);
   Serial.printf("DHT Temperatura: %f °C\n", dhtTemperature);
   Serial.printf("BMP Pessão: %f Pa\n", bmpPressure);
   Serial.printf("BMP Temperatura: %f °C\n", bmpTemperature);
-  Serial.printf("Altitude Aproximada: %f m\n", bmp.readAltitude(1018));
   Serial.printf("Velocidade do Vento: %f km/h\n", windSpeed);
   Serial.printf("Rajada do Vento: %f km/h\n", windGust);
   Serial.printf("Chuva: %f mm\n", rainCount);
@@ -158,6 +146,7 @@ void sendDataViaWifi1()
   char buf[1000];
   snprintf(buf, sizeof buf,
            "{"
+           "\"temperature\": %f,"
            "\"pressure\": %f,"
            "\"humidity\": %f,"
            "\"precipitation\": %f,"
@@ -167,7 +156,6 @@ void sendDataViaWifi1()
            "\"solar_incidence\": %f,"
            "\"station_id\": \"%s\""
            "}",
-
            bmpTemperature,
            bmpPressure,
            humidity,
@@ -334,7 +322,7 @@ void setup()
     Serial.println(F("Could not find a valid BMP280 sensor, check wiring or "
                      "try a different address!"));
     while (1)
-      delay(10);
+      delay(100);
   }
 
   bmp.setSampling(Adafruit_BMP280::MODE_NORMAL,     // Operating Mode.
