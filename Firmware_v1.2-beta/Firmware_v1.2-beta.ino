@@ -48,7 +48,7 @@ const float Vcc = 3.03;
 unsigned long lastWindTime;
 
 long currentWindCount = 0;
-unsigned long shortestWindTime = 0;
+unsigned long shortestWindTime = 0xffffffff;
 float currentWindSpeed = 0.0;
 float sampleTime = 5.0;
 unsigned long startSampleTime = 0;
@@ -68,7 +68,7 @@ void ICACHE_RAM_ATTR funcaoInterrupcaoRain()
 void ICACHE_RAM_ATTR funcaoInterrupcaoWind()
 {
   unsigned long currentTime = (unsigned long)(micros() - lastWindTime);
-
+  Serial.println("Ventou");
   lastWindTime = micros();
   if (currentTime > 1000) // debounce
   {
@@ -77,9 +77,11 @@ void ICACHE_RAM_ATTR funcaoInterrupcaoWind()
     {
       shortestWindTime = currentTime;
     }
+    Serial.printf("Shortest time: %lu", shortestWindTime);
   }
 }
 
+// Adapatado de https://github.com/switchdoclabs/SDL_Weather_80422/blob/master/SDL_Weather_80422.cpp
 float get_wind_gust()
 {
   unsigned long latestTime;
@@ -95,17 +97,25 @@ float get_current_wind_speed()
   startSampleTime = micros();
   unsigned long compareValue;
   compareValue = sampleTime * 1000000;
-
-  if (micros() - startSampleTime >= compareValue)
+  bool read = false;
+  while (!read)
   {
-    float timeSpan;
-    timeSpan = (micros() - startSampleTime);
+    if (micros() - startSampleTime >= compareValue)
+    {
+      read = true;
+      unsigned long timeSpan;
+      timeSpan = (micros() - startSampleTime);
 
-    currentWindSpeed = ((float)currentWindCount / (timeSpan)) * WIND_FACTOR * 1000000;
+      currentWindSpeed = ((float)currentWindCount / (timeSpan)) * WIND_FACTOR * 1000000;
 
-    currentWindCount = 0;
+      currentWindCount = 0;
 
-    startSampleTime = micros();
+      startSampleTime = micros();
+    }
+    else
+    {
+      delay(1000);
+    }
   }
 
   return currentWindSpeed;
@@ -322,7 +332,7 @@ void setup()
     Serial.println(F("Could not find a valid BMP280 sensor, check wiring or "
                      "try a different address!"));
     while (1)
-      delay(100);
+      delay(1000);
   }
 
   bmp.setSampling(Adafruit_BMP280::MODE_NORMAL,     // Operating Mode.
