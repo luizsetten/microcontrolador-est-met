@@ -32,8 +32,8 @@ const float Vcc = 3.03;
 
 // Configurações wifi
 
-#define STASSID "wifi1"
-#define STAPSK "senha1"
+#define STASSID "ASUS_14"
+#define STAPSK "center_2527"
 
 // Configurações DHT
 #define DHTPIN 2      // pino que estamos conectado
@@ -216,6 +216,8 @@ void sendDataViaWifi1()
       http.end();
     }
     rainCount = 0;
+  } else {
+     Serial.print("Não Conectado\n");
   }
 }
 
@@ -344,8 +346,9 @@ void setup()
   // Inicia a conexão do wifi
 
   WiFi.mode(WIFI_STA);
-  WiFiMulti.addAP(STASSID, STAPSK);
-  WiFiMulti.addAP("wifi2", "senha2");
+  //WiFiMulti.addAP(STASSID, STAPSK);
+  //WiFiMulti.addAP("Estacao", "71BXdu6Rp2r%");
+  WiFiMulti.addAP("Wimax Luiz Gustavo Setten", "34346037");
 
   Serial.print("\n\nConfigurado\n");
 }
